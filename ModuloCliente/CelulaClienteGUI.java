@@ -24,7 +24,6 @@ public class CelulaClienteGUI extends JFrame {
 
     private ArrayList<JButton> listaBotones = new ArrayList<>();
     
-    
     private Set<String> foliosPendientes = ConcurrentHashMap.newKeySet();
     private Map<String, Integer> acksRecibidos = new ConcurrentHashMap<>();
     private final int MIN_ACKS = 1; 
@@ -138,21 +137,17 @@ public class CelulaClienteGUI extends JFrame {
                 while (true) {
                     Mensaje msg = (Mensaje) in.readObject();
 
-                   
                     if (!foliosPendientes.contains(msg.folio)) {
                         continue; 
                     }
 
-                 
                     if (msg.tipoMensaje.equals("ACK")) {
                         int conteo = acksRecibidos.getOrDefault(msg.folio, 0) + 1;
                         acksRecibidos.put(msg.folio, conteo);
                         guardarHistorial("ACK recibido para folio " + msg.folio + " desde " + msg.idRemitente + " (Total: " + conteo + ")");
                     } 
-                 
                     else if (msg.tipoMensaje.equals("RES")) {
                         int acks = acksRecibidos.getOrDefault(msg.folio, 0);
-                        
                         
                         if (acks >= MIN_ACKS) {
                             foliosPendientes.remove(msg.folio);
@@ -167,8 +162,6 @@ public class CelulaClienteGUI extends JFrame {
                                 cambiarEstadoBotones(true);
                             });
                             guardarHistorial("Resultado VALIDADO (" + msg.resultado + ") con Huella: " + msg.huella);
-                        } else {
-                            guardarHistorial("Respuesta DESCARTADA por falta de ACKs. Requeridos: " + MIN_ACKS + ", Obtenidos: " + acks);
                         }
                     }
                 }
@@ -197,19 +190,50 @@ public class CelulaClienteGUI extends JFrame {
             double n1 = Double.parseDouble(num1);
             double n2 = Double.parseDouble(num2);
 
-            
             Mensaje peticion = new Mensaje("REQ", reqCode, n1, n2, idCliente);
-            
-          
             foliosPendientes.add(peticion.folio);
             acksRecibidos.put(peticion.folio, 0);
 
-            out.writeObject(peticion);
-            out.flush();
-            guardarHistorial("Enviado REQ: " + peticion.folio + " [" + n1 + " " + operador + " " + n2 + "]");
-
             display.setText("Calculando...");
             cambiarEstadoBotones(false);
+
+            new Thread(() -> {
+                boolean completado = false;
+                int intentos = 0;
+                
+                while (!completado && intentos < 3) {
+                    intentos++;
+                    try {
+                        out.writeObject(peticion);
+                        out.reset();
+                        out.flush();
+                        guardarHistorial("Enviado REQ: " + peticion.folio + " (Intento " + intentos + ")");
+                        
+                        int espera = 0;
+                        while (foliosPendientes.contains(peticion.folio) && espera < 40) {
+                            Thread.sleep(100);
+                            espera++;
+                        }
+                        
+                        if (!foliosPendientes.contains(peticion.folio)) {
+                            completado = true; 
+                        } else {
+                            final int intentoActual = intentos;
+                            SwingUtilities.invokeLater(() -> display.setText("Fallo red. Reintento " + intentoActual + "..."));
+                        }
+                    } catch (Exception e) {
+                        break; 
+                    }
+                }
+                
+                if (!completado) {
+                    SwingUtilities.invokeLater(() -> {
+                        display.setText("Error: Nodo caído");
+                        limpiarCalculadora();
+                    });
+                    foliosPendientes.remove(peticion.folio);
+                }
+            }).start();
 
         } catch (Exception e) {
             display.setText("Error");

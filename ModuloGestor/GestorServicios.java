@@ -27,13 +27,17 @@ public class GestorServicios extends JFrame {
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
-        
         String[] columnas = {"ID Célula", "Servicio Actual"};
-        modeloTabla = new DefaultTableModel(columnas, 0);
+        modeloTabla = new DefaultTableModel(columnas, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false; // Evita edición accidental al hacer clic
+            }
+        };
         tablaCelulas = new JTable(modeloTabla);
+        tablaCelulas.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         add(new JScrollPane(tablaCelulas), BorderLayout.CENTER);
 
-        
         JPanel panelBotones = new JPanel(new GridLayout(2, 3, 5, 5));
         
         JButton btnTopo = new JButton("Actualizar Topología");
@@ -65,6 +69,7 @@ public class GestorServicios extends JFrame {
             try {
                 Socket socket = new Socket(host, puerto);
                 out = new ObjectOutputStream(socket.getOutputStream());
+                out.flush();
                 in = new ObjectInputStream(socket.getInputStream());
                 
                 System.out.println("[+] Gestor conectado a la red.");
@@ -73,23 +78,24 @@ public class GestorServicios extends JFrame {
                 while (true) {
                     Mensaje msg = (Mensaje) in.readObject();
                     
-                    
-                    if (msg.tipoMensaje.equals("TOPO_RES")) {
-                        agregarCelulAAlaTabla(msg.idRemitente, msg.codigoContenido);
+                    if (msg != null && "TOPO_RES".equals(msg.tipoMensaje)) {
+                        agregarCelulaALaTabla(msg.idRemitente, msg.codigoContenido);
                     }
                 }
             } catch (Exception e) {
-                JOptionPane.showMessageDialog(this, "Desconectado de la red ADS.");
+                SwingUtilities.invokeLater(() -> 
+                    JOptionPane.showMessageDialog(this, "Desconectado de la red ADS.")
+                );
             }
         }).start();
     }
 
     private void solicitarTopologia() {
-        modeloTabla.setRowCount(0); 
+        SwingUtilities.invokeLater(() -> modeloTabla.setRowCount(0)); 
         try {
-            
             Mensaje msgTopo = new Mensaje("TOPO", "REQUEST", 0.0, 0.0, idGestor);
             out.writeObject(msgTopo);
+            out.reset();
             out.flush();
         } catch (IOException e) {
             System.err.println("Error solicitando topología.");
@@ -106,15 +112,14 @@ public class GestorServicios extends JFrame {
         String idDestino = (String) modeloTabla.getValueAt(filaSeleccionada, 0);
 
         try {
-          
             Mensaje msgAdmin = new Mensaje("ADMIN", comando, 0, 0, idGestor);
             msgAdmin.folio = idDestino; 
             
             out.writeObject(msgAdmin);
+            out.reset();
             out.flush();
             
-           
-            Thread.sleep(500);
+            Thread.sleep(400);
             solicitarTopologia();
             
         } catch (Exception e) {
@@ -122,7 +127,7 @@ public class GestorServicios extends JFrame {
         }
     }
 
-    private void agregarCelulAAlaTabla(String idCelula, String estado) {
+    private void agregarCelulaALaTabla(String idCelula, String estado) {
         SwingUtilities.invokeLater(() -> {
             modeloTabla.addRow(new Object[]{idCelula, estado});
         });
@@ -130,11 +135,15 @@ public class GestorServicios extends JFrame {
 
     public static void main(String[] args) {
         int puerto = 8001;
-        String strPuerto = JOptionPane.showInputDialog(null, "Puerto del Nodo (Para el Gestor):", "8001");
-        if (strPuerto != null && !strPuerto.trim().isEmpty()) {
-            puerto = Integer.parseInt(strPuerto.trim());
+        if (args.length > 0) {
+            puerto = Integer.parseInt(args[0]);
         } else {
-            System.exit(0);
+            String strPuerto = JOptionPane.showInputDialog(null, "Puerto del Nodo (Para el Gestor):", "8001");
+            if (strPuerto != null && !strPuerto.trim().isEmpty()) {
+                puerto = Integer.parseInt(strPuerto.trim());
+            } else {
+                System.exit(0);
+            }
         }
         
         int finalPuerto = puerto;

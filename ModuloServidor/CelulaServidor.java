@@ -17,13 +17,18 @@ public class CelulaServidor {
     private ObjectOutputStream out;
     private ObjectInputStream in;
 
-    public CelulaServidor(String host, int puertoNodo) {
+    public CelulaServidor(String host, int puertoNodo, String genInicial) {
         this.idServidor = "SRV-" + UUID.randomUUID().toString().substring(0, 5);
         this.archivoHistorial = "historial_" + idServidor + ".txt";
         System.out.println("==========================================");
-        System.out.println("   CELULA SERVIDOR INICIADA (VACIA)");
+        System.out.println("   CELULA SERVIDOR INICIADA");
         System.out.println("   ID: " + idServidor);
         System.out.println("==========================================");
+        
+        if (genInicial != null && !genInicial.isEmpty()) {
+            cargarGenActivo(genInicial);
+        }
+        
         conectarAlNodo(host, puertoNodo);
     }
 
@@ -45,6 +50,7 @@ public class CelulaServidor {
         try {
             Socket socket = new Socket(host, puerto);
             out = new ObjectOutputStream(socket.getOutputStream());
+            out.flush();
             in = new ObjectInputStream(socket.getInputStream());
             guardarHistorial("Conectado al Nodo ADS en puerto " + puerto);
             System.out.println("[*] Conectado a la malla. Esperando instrucciones...");
@@ -117,9 +123,15 @@ public class CelulaServidor {
 
     public static void main(String[] args) {
         int puerto = 8001; 
+        String genInicial = null;
+        
         if (args.length > 0) {
             puerto = Integer.parseInt(args[0]);
         }
-        new CelulaServidor("localhost", puerto);
+        if (args.length > 1) {
+            genInicial = args[1];
+        }
+        
+        new CelulaServidor("localhost", puerto, genInicial);
     }
 }
